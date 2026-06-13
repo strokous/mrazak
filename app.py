@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import smtplib  # Odesílání e-mailů přes Google
 from email.mime.text import MIMEText
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from email.header import Header
 
 app = Flask(__name__)
 app.secret_key = "nejake_super_tajne_heslo_pro_sessions"
@@ -16,7 +17,7 @@ SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 EMAIL_ODESILATELE = "domacimrazak@gmail.com"
 # !!! SEM VLOŽ TO 16MÍSTNÉ HESLO, KTERÉ TI VYGENEROVAL GOOGLE (VČETNĚ MEZER) !!!
-HESLO_ODESILATELE = "fjjy qubb yvlq hmxb" 
+HESLO_ODESILATELE = "jvps aotz fmob ifqb" 
 
 # Nastavení Flask-Login a automatického pamatování přihlášení na 30 dní
 login_manager = LoginManager()
@@ -70,22 +71,50 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Funkce, která do e-mailu zabalí PŮVODNÍ jméno i heslo
-def odeslat_pripomenuti_email(komu, uzivatelske_jmeno, heslo):
-    text_zpravy = f"Ahoj,\n\nposíláme ti tvoje přihlašovací údaje do aplikace Mrazák.\n\nUživatelské jméno: {uzivatelske_jmeno}\nHeslo: {heslo}\n\nTvůj Mrazák ❄️"
+def odeslat_pripomenuti_email(email, username, původní_heslo):
+    # ================= NASTAVENÍ SMTP SEVERU =================
+    # Pokud máš e-mail na Seznamu, nechej: "smtp.seznam.cz"
+    # Pokud máš e-mail na Gmailu, změň na: "smtp.gmail.com"
+    SMTP_SERVER = "smtp.gmail.com" 
+    SMTP_PORT = 587  # Bezpečný port s TLS šifrováním
     
-    msg = MIMEText(text_zpravy, _charset="utf-8")
-    msg["Subject"] = "Připomenutí přihlašovacích údajů - Mrazák"
-    msg["From"] = EMAIL_ODESILATELE
-    msg["To"] = komu
+    # Tady vyplň SVŮJ e-mail, ze kterého se budou zprávy odesílat
+    ODESILATEL_EMAIL = "domacimrazak@gmail.com" 
+    # Tady vyplň heslo k tomuto e-mailu (u Gmailu/Seznamu tzv. Heslo pro aplikace)
+    ODESILATEL_HESLO = "jvps aotz fmob ifqb"
+    # =========================================================
 
+    # 1. Příprava e-mailové zprávy
+    text_zpravy = f"""Ahoj {username},
+
+na webu Mrazák bylo vyžádáno připomenutí hesla.
+Tvoje přihlašovací údaje jsou:
+
+Uživatelské jméno: {username}
+Heslo: {původní_heslo}
+
+Doporučujeme si heslo po přihlášení změnit.
+Tým Mrazák
+"""
+
+    msg = MIMEText(text_zpravy, 'plain', 'utf-8')
+    msg['Subject'] = Header('Zapomenuté heslo - Mrazák', 'utf-8')
+    msg['From'] = ODESILATEL_EMAIL
+    msg['To'] = email
+
+    # 2. Samotné odeslání se zabezpečením proti zamrznutí (timeout)
     try:
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-            server.login(EMAIL_ODESILATELE, HESLO_ODESILATELE)
-            server.sendmail(EMAIL_ODESILATELE, komu, msg.as_string())
-        return True
+        # timeout=10 zajistí, že pokud server neodpoví do 10s, spojení se přeruší a Render nespadne
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
+            server.starttls()  # Zapne bezpečné šifrování
+            server.login(ODESILATEL_EMAIL, ODESILATEL_HESLO)  # Přihlášení k e-mailu
+            server.sendmail(ODESILATEL_EMAIL, [email], msg.as_string())  # Odeslání
+            print(f"E-mail pro {username} byl úspěšně odeslán.")
+            return True
+            
     except Exception as e:
-        print("Chyba při odesílání e-mailu skrze Gmail:", e)
+        # Pokud se něco pokazí, chyba se vypíše do logu na Renderu, ale web pojede dál
+        print(f"Chyba při odesílání emailu pro {username}: {e}")
         return False
 
 # --- POMOCNÉ FUNKCE PRO DATA ---
