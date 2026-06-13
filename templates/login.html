@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Přihlášení - Mrazák</title>
+<style>
+    body { 
+        margin: 0; 
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+        background: #0b1220; 
+        color: white; 
+        display: flex; 
+        justify-content: center; 
+        align-items: center; 
+        min-height: 100vh;
+        padding: 16px;
+        box-sizing: border-box;
+    }
+    .card { 
+        background: #121a2b; 
+        border: 2px solid rgba(255,255,255,0.12); 
+        border-radius: 24px; 
+        padding: 32px 24px; 
+        width: 100%; 
+        max-width: 380px; 
+        box-shadow: 0 12px 40px rgba(0,0,0,0.6); 
+        text-align: center;
+    }
+    h2 { font-size: 28px; margin-top: 0; margin-bottom: 8px; }
+    h3 { font-size: 20px; opacity: 0.8; margin-bottom: 24px; font-weight: 500; }
+    
+    input[type="text"], input[type="password"] { 
+        width: 100%; 
+        padding: 16px; 
+        margin-bottom: 16px; 
+        border-radius: 14px; 
+        border: 2px solid rgba(255,255,255,0.15); 
+        background: #1c2740; 
+        color: white; 
+        font-size: 18px; 
+        box-sizing: border-box;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+    input:focus { border-color: #3b82f6; }
+
+    .remember-box { 
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        margin: 8px 0 24px 0; 
+        font-size: 18px; 
+        text-align: left;
+        cursor: pointer;
+        user-select: none;
+    }
+    /* Větší checkbox pro tlusté prsty */
+    input[type="checkbox"] { 
+        width: 24px; 
+        height: 24px; 
+        cursor: pointer;
+        margin: 0;
+    }
+
+    button { 
+        width: 100%; 
+        padding: 16px; 
+        border: none; 
+        border-radius: 14px; 
+        font-size: 18px; 
+        font-weight: 700; 
+        background: #3b82f6; 
+        color: white; 
+        cursor: pointer; 
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+    button:active { background: #2563eb; transform: scale(0.98); }
+
+    a { color: #60a5fa; text-decoration: none; font-size: 16px; display: block; padding: 10px; margin-top: 4px; font-weight: 500; }
+    .flash { background: rgba(248, 113, 113, 0.15); color: #f87171; font-size: 16px; padding: 12px; border-radius: 12px; border: 1px solid rgba(248, 113, 113, 0.3); margin-bottom: 16px; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="card">
+    <h2>❄️ Můj mrazák</h2>
+    <h3>Přihlášení</h3>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}{% for msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}{% endif %}
+    {% endwith %}
+    <form method="POST">
+        <input type="text" name="username" placeholder="Uživatelské jméno" required autocomplete="off">
+        <input type="password" name="password" placeholder="Heslo" required>
+        
+        <label class="remember-box">
+            <input type="checkbox" name="remember" id="remember">
+            <span>Zapamatovat si mě</span>
+        </label>
+        
+        <button type="submit">Vstoupit</button>
+    </form>
+    <a href="/register">Nemáš účet? Zaregistruj se</a>
+    <a href="/forgot_password" style="color: #94a3b8; font-size: 14px; margin-top: 12px;">Zapomenuté heslo?</a>
+</div>
+</body>
+</html>
