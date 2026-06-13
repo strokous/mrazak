@@ -3,7 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="#0b1220">
+
+<script>
+    // Registrace běhu na pozadí (Service Worker)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+    }
+
+    // Automatická žádost o povolení vyskakovacích notifikací z mrazáku
+    fetch('/get_ntfy_channel')
+        .then(res => res.json())
+        .then(data => {
+            // Použijeme webové rozhraní NTFY pro registraci odběru oznámení přímo v prohlížeči
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        console.log("Notifikace povoleny!");
+                    }
+                });
+            }
+        });
+</script>
 <title>Můj mrazák</title>
+
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
 <style>
     :root {
@@ -41,7 +67,6 @@
         box-sizing: border-box;
     }
 
-    /* Horní lišta s odhlášením */
     .user-bar {
         display: flex;
         justify-content: space-between;
@@ -54,7 +79,6 @@
     }
     .user-bar a { color: #f87171; text-decoration: none; font-weight: 600; padding: 6px 10px; }
 
-    /* FILTRAČNÍ PANEL */
     .filter-section {
         display: flex;
         flex-direction: column;
@@ -66,147 +90,57 @@
         border: 1px solid rgba(255,255,255,0.15);
     }
 
-    .filter-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-
+    .filter-row { display: flex; align-items: center; justify-content: space-between; }
     .filter-label { font-size: 16px; font-weight: 600; opacity: 0.9; }
 
     .filter-select {
-        background: #1c2740;
-        color: white;
-        border: 1px solid rgba(255,255,255,0.2);
-        padding: 10px 14px;
-        border-radius: 10px;
-        font-size: 15px;
-        font-weight: 600;
-        outline: none;
+        background: #1c2740; color: white; border: 1px solid rgba(255,255,255,0.2);
+        padding: 10px 14px; border-radius: 10px; font-size: 15px; font-weight: 600; outline: none;
     }
-    .filter-select option { background: #121a2b; color: white; }
 
-    /* VELKÉ MOBILNÍ KARTY S JÍDLEM */
     .item-card {
-        background: var(--card-bg);
-        border: 2px solid var(--card-border);
-        border-radius: 20px;
-        padding: 16px;
-        margin-bottom: 14px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        backdrop-filter: blur(12px);
+        background: var(--card-bg); border: 2px solid var(--card-border); border-radius: 20px;
+        padding: 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     }
 
-    .item-info {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        flex: 1;
-        padding-right: 12px;
-    }
-
-    .item-title-row {
-        display: flex;
-        align-items: baseline;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-
+    .item-info { display: flex; flex-direction: column; gap: 6px; flex: 1; padding-right: 12px; }
+    .item-title-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
     .item-name { font-size: 21px; font-weight: 700; word-break: break-word; }
     .item-count { font-size: 19px; color: #3b82f6; font-weight: 700; }
-    
-    .item-details {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 14px;
-        opacity: 0.75;
-    }
+    .item-details { display: flex; flex-direction: column; gap: 4px; font-size: 14px; opacity: 0.75; }
 
-    /* TLAČÍTKA NA KARTĚ - OBŘÍ VELIKOST PRO PALEC */
-    .action-buttons { 
-        display: flex; 
-        gap: 10px; 
-        align-items: center; 
-    }
-    
-    .btn-action { 
-        width: 52px; 
-        height: 52px; 
-        border: none; 
-        border-radius: 14px; 
-        color: white; 
-        font-size: 20px; 
-        font-weight: bold;
-        cursor: pointer; 
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.1s;
-    }
+    .action-buttons { display: flex; gap: 10px; align-items: center; }
+    .btn-action { width: 52px; height: 52px; border: none; border-radius: 14px; color: white; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .btn-minus { background: #374151; border: 1px solid rgba(255,255,255,0.1); }
-    .btn-minus:active { background: #1f2937; }
     .btn-delete { background: #ef4444; }
-    .btn-delete:active { background: #dc2626; }
 
-    /* SPODNÍ NAVIGAČNÍ MENU */
-    .bottom-menu { 
-        position: fixed; 
-        bottom: 24px; 
-        left: 50%; 
-        transform: translateX(-50%); 
-        display: flex; 
-        gap: 20px; 
-        z-index: 99; 
-        width: calc(100% - 32px);
-        max-width: 418px;
-        justify-content: center;
-    }
-    .menu-btn { 
-        flex: 1;
-        max-width: 140px;
-        height: 64px; 
-        background: #1e293b; 
-        border: 2px solid var(--card-border); 
-        border-radius: 18px; 
-        color: white; 
-        font-size: 26px; 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        cursor: pointer; 
-        box-shadow: 0 10px 30px rgba(0,0,0,0.6); 
-    }
+    .bottom-menu { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; z-index: 99; width: calc(100% - 32px); max-width: 418px; justify-content: center; }
+    .menu-btn { flex: 1; max-width: 140px; height: 64px; background: #1e293b; border: 2px solid var(--card-border); border-radius: 18px; color: white; font-size: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
     .menu-btn-add { background: #3b82f6; border-color: #60a5fa; }
     #bgInput { display: none; }
 
-    /* MOBILNÍ MODAL (VYSKAKOVACÍ OKNO) */
+    /* MODAL */
     .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
     .modal-overlay.active { opacity: 1; pointer-events: auto; }
-    .modal-card { background: #121a2b; border: 2px solid var(--card-border); border-radius: 24px; padding: 24px; width: 100%; max-width: 360px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); }
-    .modal-card h3 { font-size: 22px; margin-top: 0; margin-bottom: 20px; text-align: center; }
+    .modal-card { background: #121a2b; border: 2px solid var(--card-border); border-radius: 24px; padding: 24px; width: 100%; max-width: 360px; max-height: 90vh; overflow-y: auto; }
+    .modal-card h3 { font-size: 22px; margin-top: 0; margin-bottom: 16px; text-align: center; }
     
-    .form-group input { 
-        width: 100%; 
-        padding: 15px; 
-        margin-bottom: 16px; 
-        border-radius: 12px; 
-        border: 2px solid rgba(255,255,255,0.15); 
-        background: #1c2740; 
-        color: white; 
-        font-size: 18px; 
-        box-sizing: border-box; 
-        outline: none;
-    }
+    .form-group input { width: 100%; padding: 15px; margin-bottom: 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); background: #1c2740; color: white; font-size: 18px; box-sizing: border-box; outline: none; }
     .form-group label { display: block; font-size: 15px; margin-bottom: 6px; opacity: 0.8; }
     
-    .form-buttons { display: flex; gap: 12px; margin-top: 8px; }
+    .form-buttons { display: flex; gap: 12px; margin-top: 14px; }
     .form-buttons button { flex: 1; padding: 16px; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
     .btn-submit { background: #3b82f6; color: white; }
     .btn-cancel { background: #374151; color: white; }
+
+    /* SPECIÁLNÍ TLAČÍTKO PRO SKENOVÁNÍ */
+    .btn-scanner {
+        width: 100%; padding: 14px; background: #0284c7; border: none; border-radius: 12px;
+        color: white; font-size: 16px; font-weight: 700; margin-bottom: 16px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    #reader { width: 100%; background: black; border-radius: 12px; margin-bottom: 14px; overflow: hidden; display: none; }
 </style>
 </head>
 <body>
@@ -248,19 +182,16 @@
                     <span class="item-count">{{ item[2] }}x</span>
                 </div>
                 <div class="item-details">
-                    {% if item[3] %}
-                        <span>📅 Koupil/a: {{ item[3] }}</span>
-                    {% endif %}
+                    {% if item[3] %} <span>📅 Koupil/a: {{ item[3] }}</span> {% endif %}
                     <span>❄️ Vložil/a: <b>{{ item[5] }}</b></span>
                 </div>
             </div>
-            
             <div class="action-buttons">
                 <a href="/remove_one/{{ item[0] }}?sort={{ sort_by }}&user={{ user_filter }}">
-                    <button class="btn-action btn-minus" title="Odebrat jeden kus">━</button>
+                    <button class="btn-action btn-minus">━</button>
                 </a>
                 <a href="/delete/{{ item[0] }}?sort={{ sort_by }}&user={{ user_filter }}">
-                    <button class="btn-action btn-delete" title="Smazat úplně">✕</button>
+                    <button class="btn-action btn-delete">✕</button>
                 </a>
             </div>
         </div>
@@ -268,9 +199,9 @@
     </div>
 
     <div class="bottom-menu">
-        <label for="bgInput" class="menu-btn" title="Změnit pozadí">🖼️</label>
+        <label for="bgInput" class="menu-btn">🖼️</label>
         <input type="file" id="bgInput" accept="image/*">
-        <button class="menu-btn menu-btn-add" id="openModalBtn" title="Přidat jídlo">+</button>
+        <button class="menu-btn menu-btn-add" id="openModalBtn">+</button>
     </div>
 
 </div>
@@ -282,9 +213,13 @@
 <div class="modal-overlay" id="modalOverlay">
     <div class="modal-card">
         <h3>Přidat do mrazáku</h3>
+        
+        <button type="button" class="btn-scanner" id="startScanBtn">Naskenovat kód 📷</button>
+        <div id="reader"></div>
+
         <form action="/add?sort={{ sort_by }}&user={{ user_filter }}" method="POST">
             <div class="form-group">
-                <input type="text" name="nazev" placeholder="Název jídla (např. Hovězí)" required autocomplete="off">
+                <input type="text" id="nazevInput" name="nazev" placeholder="Název jídla (např. Pizza)" required autocomplete="off">
                 <input type="number" name="mnozstvi" placeholder="Množství" min="1" value="1" required>
                 <label for="datumInput">Datum nákupu (nepovinné):</label>
                 <input type="date" id="datumInput" name="datum">
@@ -301,11 +236,63 @@
     const modal = document.getElementById('modalOverlay');
     const openBtn = document.getElementById('openModalBtn');
     const closeBtn = document.getElementById('closeModalBtn');
+    const nazevInput = document.getElementById('nazevInput');
+    
+    // Proměnná pro čtečku kódu
+    let html5QrcodeScanner = null;
 
     openBtn.addEventListener('click', () => modal.classList.add('active'));
-    closeBtn.addEventListener('click', () => modal.classList.remove('active'));
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('active'); });
+    
+    closeBtn.addEventListener('click', () => {
+        modal.classList.remove('active');
+        vypniKameru();
+    });
 
+    // JAVASCRIPT OVLÁDÁNÍ SKENERU CHYTRÉHO TELEFONU
+    document.getElementById('startScanBtn').addEventListener('click', function() {
+        const readerDiv = document.getElementById('reader');
+        readerDiv.style.display = 'block'; // Otevře okno s foťákem
+        
+        html5QrcodeScanner = new Html5Qrcode("reader");
+        
+        html5QrcodeScanner.start(
+            { facingMode: "environment" }, // Zapne zadní foťák mobilu
+            { fps: 10, qrbox: { width: 250, height: 150 } }, // Výřez pro čárové kódy
+            (decodedText, decodedResult) => {
+                // ÚSPĚŠNÉ PÍPNUTÍ KÓDU
+                vypniKameru();
+                nazevInput.placeholder = "Hledám na internetu...";
+                nazevInput.value = "";
+
+                // Pošleme kód našemu Pythonu, který se zeptá Open Food Facts databáze
+                fetch(`/scan_barcode/${decodedText}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            nazevInput.value = data.nazev; // Vyplní zjištěný název
+                        } else {
+                            nazevInput.placeholder = "Kód neznámý, napiš název ručně";
+                        }
+                    })
+                    .catch(err => {
+                        nazevInput.placeholder = "Chyba internetu, napiš ručně";
+                    });
+            },
+            (errorMessage) => { /* průběžné hledání kódu, ignorujeme chyby */ }
+        ).catch(err => {
+            alert("Nepodařilo se spustit foťák. Zkontroluj povolení nebo zda běžíš na HTTPS.");
+        });
+    });
+
+    function vypniKameru() {
+        if (html5QrcodeScanner) {
+            html5QrcodeScanner.stop().then(() => {
+                document.getElementById('reader').style.display = 'none';
+            }).catch(err => console.error("Chyba při vypínání kamery", err));
+        }
+    }
+
+    // Pozadí odesílání
     const bgInput = document.getElementById('bgInput');
     const bgForm = document.getElementById('bgForm');
     const imageDataInput = document.getElementById('imageDataInput');

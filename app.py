@@ -1,25 +1,26 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
 import sqlite3
 from datetime import datetime, timedelta
-import smtplib  # Odesílání e-mailů přes Google
+import smtplib
+import json
+import urllib.request
+import os
 from email.mime.text import MIMEText
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from email.header import Header
 
 app = Flask(__name__)
 app.secret_key = "nejake_super_tajne_heslo_pro_sessions"
 DATABASE = "database.db"
 
-# ====================================================================
-# NASTAVENÍ GMAIL SERVERU
-# ====================================================================
+# GMAIL CONFIGURATION
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 EMAIL_ODESILATELE = "domacimrazak@gmail.com"
-# !!! SEM VLOŽ TO 16MÍSTNÉ HESLO, KTERÉ TI VYGENEROVAL GOOGLE (VČETNĚ MEZER) !!!
-HESLO_ODESILATELE = "jvps aotz fmob ifqb" 
+HESLO_ODESILATELE = "jvps aotz fmob ifqb"
 
-# Nastavení Flask-Login a automatického pamatování přihlášení na 30 dní
+# UNIKÁTNÍ NÁZEV KANÁLU PRO PUSH NOTIFIKACE (změň si ta čísla na cokoliv, aby to nikdo neuhodl)
+NTFY_CHANNEL = "mrazak_notifikace_rodina_987456"
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -45,8 +46,6 @@ def load_user(user_id):
 def init_db():
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
-    
-    # Tabulka potravin s vazbou na uživatele
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS potraviny (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,8 +56,6 @@ def init_db():
             uzivatel_id INTEGER
         )
     """)
-    
-    # Tabulka uživatelů - sloupec password už neukládá hash, ale čistý text
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS uzivatele (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,53 +68,43 @@ def init_db():
     conn.commit()
     conn.close()
 
-def odeslat_pripomenuti_email(email, username, původní_heslo):
-    # ================= NASTAVENÍ SMTP SEVERU =================
-    # Pokud máš e-mail na Seznamu, nechej: "smtp.seznam.cz"
-    # Pokud máš e-mail na Gmailu, změň na: "smtp.gmail.com"
-    SMTP_SERVER = "smtp.gmail.com" 
-    SMTP_PORT = 587  # Bezpečný port s TLS šifrováním
-    
-    # Tady vyplň SVŮJ e-mail, ze kterého se budou zprávy odesílat
-    ODESILATEL_EMAIL = "domacimrazak@gmail.com" 
-    # Tady vyplň heslo k tomuto e-mailu (u Gmailu/Seznamu tzv. Heslo pro aplikace)
-    ODESILATEL_HESLO = "jvps aotz fmob ifqb"
-    # =========================================================
-
-    # 1. Příprava e-mailové zprávy
-    text_zpravy = f"""Ahoj {username},
-
-na webu Mrazák bylo vyžádáno připomenutí hesla.
-Tvoje přihlašovací údaje jsou:
-
-Uživatelské jméno: {username}
-Heslo: {původní_heslo}
-
-Doporučujeme si heslo po přihlášení změnit.
-Tým Mrazák
-"""
-
-    msg = MIMEText(text_zpravy, 'plain', 'utf-8')
-    msg['Subject'] = Header('Zapomenuté heslo - Mrazák', 'utf-8')
-    msg['From'] = ODESILATEL_EMAIL
-    msg['To'] = email
-
-    # 2. Samotné odeslání se zabezpečením proti zamrznutí (timeout)
+# FUNKCE PRO ODPOVĚĎ DO MOBILU (PUSH NOTIFIKACE V LIŠTĚ)
+def odeslat_push_notifikaci(text_zpravy, titulky="Mrazák ❄️"):
+    url = f"https://ntfy.sh/{NTFY_CHANNEL}"
     try:
-        # timeout=10 zajistí, že pokud server neodpoví do 10s, spojení se přeruší a Render nespadne
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=10) as server:
-            server.starttls()  # Zapne bezpečné šifrování
-            server.login(ODESILATEL_EMAIL, ODESILATEL_HESLO)  # Přihlášení k e-mailu
-            server.sendmail(ODESILATEL_EMAIL, [email], msg.as_string())  # Odeslání
-            print(f"E-mail pro {username} byl úspěšně odeslán.")
-            return True
-            
+        req = urllib.request.Request(
+            url, 
+            data=text_zpravy.encode('utf-8'),
+            headers={
+                "Title": titulky.encode('utf-8').decode('latin1'), # ntfy vyžaduje specifické kódování pro diakritiku v hlavičce
+                "Priority": "default",
+                "Tags": "warning,snowflake"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            pass
     except Exception as e:
-        # Pokud se něco pokazí, chyba se vypíše do logu na Renderu, ale web pojede dál
-        print(f"Chyba při odesílání emailu pro {username}: {e}")
+        print("Chyba při odesílání Push notifikace:", e)
+
+# Původní email odesílání
+def odeslat_email(komu, predmet, text_zpravy):
+    msg = MIMEText(text_zpravy, _charset="utf-8")
+    msg["Subject"] = predmet
+    msg["From"] = EMAIL_ODESILATELE
+    msg["To"] = komu
+    try:
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+            server.login(EMAIL_ODESILATELE, HESLO_ODESILATELE)
+            server.sendmail(EMAIL_ODESILATELE, komu, msg.as_string())
+        return True
+    except Exception as e:
+        print("Chyba e-mailu:", e)
         return False
 
-# --- POMOCNÉ FUNKCE PRO DATA ---
+def odeslat_pripomenumi_email(komu, uzivatelske_jmeno, heslo):
+    text = f"Ahoj,\n\nUživatelské jméno: {uzivatelske_jmeno}\nHeslo: {heslo}"
+    return odeslat_email(komu, "Připomenutí údajů - Mrazák", text)
 
 def get_vsechny_uzivatele():
     conn = sqlite3.connect(DATABASE)
@@ -130,18 +117,15 @@ def get_vsechny_uzivatele():
 def get_potraviny(sort_by="datum", user_filter="vse"):
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
-    
     query = """
         SELECT p.id, p.nazev, p.mnozstvi, p.datum_nakupu, p.v_mrazaku, u.username 
         FROM potraviny p
         LEFT JOIN uzivatele u ON p.uzivatel_id = u.id
     """
     params = []
-    
     if user_filter != "vse":
         query += " WHERE p.uzivatel_id = ?"
         params.append(int(user_filter))
-        
     if sort_by == "abeceda":
         query += " ORDER BY LOWER(p.nazev) ASC"
     else:
@@ -150,35 +134,59 @@ def get_potraviny(sort_by="datum", user_filter="vse"):
                 CASE WHEN p.datum_nakupu IS NULL OR p.datum_nakupu = '' THEN 1 ELSE 0 END ASC, 
                 p.datum_nakupu ASC
         """
-        
     cursor.execute(query, params)
     data = cursor.fetchall()
     conn.close()
     return data
 
-# --- ROUTY PRO AUTENTIZACI ---
+# --- SPECIÁLNÍ ROUTY PRO INSTALACI APLIKACE (PWA) ---
+@app.route("/manifest.json")
+def manifest():
+    return send_from_directory("templates", "manifest.json")
 
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory("static", "sw.js")
+
+@app.route("/get_ntfy_channel")
+@login_required
+def get_ntfy_channel():
+    return jsonify({"channel": NTFY_CHANNEL})
+
+@app.route("/scan_barcode/<barcode>")
+@login_required
+def scan_barcode(barcode):
+    url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'DomaciMrazakApp - Web - 1.0'})
+        with urllib.request.urlopen(req, timeout=4) as response:
+            data = json.loads(response.read().decode())
+        if data.get("status") == 1 and "product" in data:
+            product = data["product"]
+            nazev = product.get("product_name_cs") or product.get("product_name") or "Neznámá potravina"
+            return jsonify({"success": True, "nazev": nazev})
+    except Exception as e:
+        print("Chyba čárového kódu:", e)
+    return jsonify({"success": False, "nazev": "Kód nenalezen"})
+
+# --- ROUTY AUTENTIZACE ---
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
         remember_me = True if request.form.get("remember") == "on" else False
-        
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
-        # Porovnáváme čistý text (password = ?) bez jakéhokoliv hashování
         cursor.execute("SELECT id, username, password, pozadi FROM uzivatele WHERE username = ?", (username,))
         user_data = cursor.fetchone()
         conn.close()
-        
         if user_data and user_data[2] == password:
             user = User(user_data[0], user_data[1], user_data[3])
             login_user(user, remember=remember_me)
             return redirect(url_for("home"))
         else:
             flash("Nesprávné jméno nebo heslo!")
-            
     return render_template("login.html")
 
 @app.route("/register", methods=["GET", "POST"])
@@ -186,48 +194,36 @@ def register():
     if request.method == "POST":
         username = request.form["username"].strip()
         email = request.form["email"].strip().lower()
-        password = request.form["password"]  # Heslo bereme tak, jak je
-        
+        password = request.form["password"]
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
         try:
-            # Ukládáme přímo čisté heslo do databáze
             cursor.execute("INSERT INTO uzivatele (username, email, password) VALUES (?, ?, ?)", (username, email, password))
             conn.commit()
-            flash("Registrace úspěšná! Nyní se můžeš přihlásit.")
+            flash("Registrace úspěšná!")
             return redirect(url_for("login"))
         except sqlite3.IntegrityError:
-            flash("Uživatelské jméno nebo e-mail už jsou obsazené!")
+            flash("Jméno nebo e-mail už existují!")
         finally:
             conn.close()
-            
     return render_template("register.html")
 
 @app.route("/forgot_password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
-        
         conn = sqlite3.connect(DATABASE)
         cursor = conn.cursor()
-        # Vytáhneme z databáze uložené jméno a původní čisté heslo
         cursor.execute("SELECT username, password FROM uzivatele WHERE email = ?", (email,))
         user_data = cursor.fetchone()
         conn.close()
-        
         if user_data:
-            username, původní_heslo = user_data
-            
-            # Odešleme e-mail s původními údaji (žádné generování nového hesla)
-            if odeslat_pripomenuti_email(email, username, původní_heslo):
-                flash("Tvoje přihlašovací údaje byly odeslány na e-mail!")
-            else:
-                flash("Chyba při odesílání e-mailu. Zkontroluj detaily v konzoli.")
-                
+            username, puvodni_heslo = user_data
+            odeslat_pripomenumi_email(email, username, puvodni_heslo)
+            flash("Údaje odeslány na mail!")
             return redirect(url_for("login"))
         else:
-            flash("Tento e-mail u nás není registrován!")
-            
+            flash("E-mail nenalezen!")
     return render_template("forgot_password.html")
 
 @app.route("/logout")
@@ -237,7 +233,6 @@ def logout():
     return redirect(url_for("login"))
 
 # --- ROUTY MRAZÁKU ---
-
 @app.route("/update_bg", methods=["POST"])
 @login_required
 def update_bg():
@@ -248,17 +243,16 @@ def update_bg():
         cursor.execute("UPDATE uzivatele SET pozadi = ? WHERE id = ?", (data_url, current_user.id))
         conn.commit()
         conn.close()
-    return redirect(url_for("home", sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
+    odkud = request.args.get("from", "home")
+    return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
 
 @app.route("/")
 @login_required
 def home():
     sort_by = request.args.get("sort", "datum")
     user_filter = request.args.get("user", "vse")
-    
     potraviny = get_potraviny(sort_by, user_filter)
     vsechni_uzivatele = get_vsechny_uzivatele()
-    
     upravene = []
     for item in potraviny:
         datum = item[3]
@@ -267,8 +261,21 @@ def home():
             except: pass
         vlozil_jmeno = item[5] if item[5] else "Neznámý"
         upravene.append((item[0], item[1], item[2], datum, item[4], vlozil_jmeno))
-        
     return render_template("index.html", potraviny=upravene, sort_by=sort_by, user_filter=user_filter, uzivatele=vsechni_uzivatele)
+
+@app.route("/search")
+@login_required
+def search():
+    potraviny = get_potraviny("abeceda", "vse")
+    upravene = []
+    for item in potraviny:
+        datum = item[3]
+        if datum:
+            try: datum = datetime.strptime(datum, "%Y-%m-%d").strftime("%d.%m.%Y")
+            except: pass
+        vlozil_jmeno = item[5] if item[5] else "Neznámý"
+        upravene.append((item[0], item[1], item[2], datum, item[4], vlozil_jmeno))
+    return render_template("search.html", potraviny=upravene)
 
 @app.route("/add", methods=["POST"])
 @login_required
@@ -277,45 +284,57 @@ def add():
     mnozstvi = int(request.form["mnozstvi"])
     datum = request.form.get("datum")
     if datum == "": datum = None
-    
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
     cursor.execute("SELECT id, mnozstvi FROM potraviny WHERE LOWER(nazev) = LOWER(?)", (nazev,))
     existujici = cursor.fetchone()
-    
     if existujici:
         cursor.execute("UPDATE potraviny SET mnozstvi = ? WHERE id = ?", (existujici[1] + mnozstvi, existujici[0]))
     else:
         cursor.execute("INSERT INTO potraviny (nazev, mnozstvi, datum_nakupu, v_mrazaku, uzivatel_id) VALUES (?, ?, ?, ?, ?)", 
                        (nazev, mnozstvi, datum, 1, current_user.id))
-        
     conn.commit()
     conn.close()
-    return redirect(url_for("home", sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
+    odkud = request.args.get("from", "home")
+    return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
 
 @app.route("/remove_one/<int:item_id>")
 @login_required
 def remove_one(item_id):
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
-    cursor.execute("SELECT mnozstvi FROM potraviny WHERE id = ?", (item_id,))
+    cursor.execute("SELECT mnozstvi, nazev FROM potraviny WHERE id = ?", (item_id,))
     item = cursor.fetchone()
     if item:
-        if item[0] > 1: cursor.execute("UPDATE potraviny SET mnozstvi = mnozstvi - 1 WHERE id = ?", (item_id,))
-        else: cursor.execute("DELETE FROM potraviny WHERE id = ?", (item_id,))
-    conn.commit()
+        aktualni_mnozstvi, nazev_jidla = item
+        if aktualni_mnozstvi > 1:
+            cursor.execute("UPDATE potraviny SET mnozstvi = mnozstvi - 1 WHERE id = ?", (item_id,))
+            conn.commit()
+        else:
+            cursor.execute("DELETE FROM potraviny WHERE id = ?", (item_id,))
+            conn.commit()
+            # JÍDLO DOŠLO -> POSÍLÁME PUSH NOTIFIKACI VŠEM DO LIŠTY TELEFONU
+            odeslat_push_notifikaci(f"Uživatel {current_user.username} odebral poslední kus.", f"⚠️ Došlo jídlo: {nazev_jidla}")
     conn.close()
-    return redirect(url_for("home", sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
+    odkud = request.args.get("from", "home")
+    return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
 
 @app.route("/delete/<int:item_id>")
 @login_required
 def delete(item_id):
     conn = sqlite3.connect(DATABASE)
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM potraviny WHERE id = ?", (item_id,))
-    conn.commit()
+    cursor.execute("SELECT nazev FROM potraviny WHERE id = ?", (item_id,))
+    item = cursor.fetchone()
+    if item:
+        nazev_jidla = item[0]
+        cursor.execute("DELETE FROM potraviny WHERE id = ?", (item_id,))
+        conn.commit()
+        # NATVRDO SMAZÁNO -> POSÍLÁME PUSH NOTIFIKACI VŠEM DO LIŠTY
+        odeslat_push_notifikaci(f"Uživatel {current_user.username} smazal celou položku.", f"⚠️ Došlo jídlo: {nazev_jidla}")
     conn.close()
-    return redirect(url_for("home", sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
+    odkud = request.args.get("from", "home")
+    return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
 
 if __name__ == "__main__":
     init_db()
