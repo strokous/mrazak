@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import smtplib
 import json
 import urllib.request
+import os
 from email.mime.text import MIMEText
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
@@ -12,9 +13,9 @@ app = Flask(__name__)
 app.secret_key = "nejake_super_tajne_heslo_pro_sessions"
 
 # ====================================================================
-# TADY VLOŽ SVOJI ADRESU DATABÁZE Z NEON.TECH:
+# TVŮJ UPRAVENÝ ODKAZ Z NEONU (NA KONCI PONECHÁNO JEN ?sslmode=require)
 # ====================================================================
-DATABASE_URL = "postgresql://neondb_owner:npg_1GjwOQiD9Lxz@ep-holy-sea-a2xwo123.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+DATABASE_URL = "postgresql://neondb_owner:npg_1GjwOQiD9Lxz@ep-holy-sea-a2xwo123.eu-central-1.aws.neon.tech/neondb?sslmode=require"
 
 # GMAIL A NTFY CONFIGURATION
 SMTP_SERVER = "smtp.gmail.com"
@@ -34,44 +35,55 @@ class User(UserMixin):
         self.username = username
         self.pozadi = pozadi
 
+# Pomocná funkce pro bezpečné připojení k Neonu s SSL certifikátem
+def get_db_connection():
+    # Na Renderu musíme vynutit použití systémových certifikátů pro SSL
+    return psycopg2.connect(DATABASE_URL, sslfactory="org.postgresql.ssl.NonValidatingFactory")
+
 @login_manager.user_loader
 def load_user(user_id):
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, username, pozadi FROM uzivatele WHERE id = %s", (int(user_id),))
-    user_data = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    if user_data:
-        return User(user_data[0], user_data[1], user_data[2])
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, pozadi FROM uzivatele WHERE id = %s", (int(user_id),))
+        user_data = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if user_data:
+            return User(user_data[0], user_data[1], user_data[2])
+    except Exception as e:
+        print("Chyba při load_user:", e)
     return None
 
 def init_db():
-    conn = psycopg2.connect(DATABASE_URL)
-    cursor = conn.cursor()
-    # PostgreSQL používá SERIAL místo AUTOINCREMENT a TEXT funguje skvěle
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS potraviny (
-            id SERIAL PRIMARY KEY,
-            nazev TEXT NOT NULL,
-            mnozstvi INTEGER NOT NULL,
-            datum_nakupu TEXT,
-            v_mrazaku INTEGER NOT NULL,
-            uzivatel_id INTEGER
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS uzivatele (
-            id SERIAL PRIMARY KEY,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            pozadi TEXT
-        )
-    """)
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS potraviny (
+                id SERIAL PRIMARY KEY,
+                nazev TEXT NOT NULL,
+                mnozstvi INTEGER NOT NULL,
+                datum_nakupu TEXT,
+                v_mrazaku INTEGER NOT NULL,
+                uzivatel_id INTEGER
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS uzivatele (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                pozadi TEXT
+            )
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Databáze úspěšně inicializována na Neonu!")
+    except Exception as e:
+        print("Chyba při inicializaci DB:", e)
 
 def odeslat_push_notifikaci(text_zpravy, titulky="Mrazák ❄️"):
     url = f"https://ntfy.sh/{NTFY_CHANNEL}"
@@ -110,7 +122,7 @@ def odeslat_pripomenumi_email(komu, uzivatelske_jmeno, heslo):
     return odeslat_email(komu, "Připomenutí údajů - Mrazák", text)
 
 def get_vsechny_uzivatele():
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, username FROM uzivatele ORDER BY username ASC")
     data = cursor.fetchall()
@@ -119,7 +131,7 @@ def get_vsechny_uzivatele():
     return data
 
 def get_potraviny(sort_by="datum", user_filter="vse"):
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
     cursor = conn.cursor()
     query = """
         SELECT p.id, p.nazev, p.mnozstvi, p.datum_nakupu, p.v_mrazaku, u.username 
@@ -180,18 +192,22 @@ def login():
         username = request.form["username"].strip()
         password = request.form["password"]
         remember_me = True if request.form.get("remember") == "on" else False
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, username, password, pozadi FROM uzivatele WHERE username = %s", (username,))
-        user_data = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        if user_data and user_data[2] == password:
-            user = User(user_data[0], user_data[1], user_data[3])
-            login_user(user, remember=remember_me)
-            return redirect(url_for("home"))
-        else:
-            flash("Nesprávné jméno nebo heslo!")
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, username, password, pozadi FROM uzivatele WHERE username = %s", (username,))
+            user_data = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            if user_data and user_data[2] == password:
+                user = User(user_data[0], user_data[1], user_data[3])
+                login_user(user, remember=remember_me)
+                return redirect(url_for("home"))
+            else:
+                flash("Nesprávné jméno nebo heslo!")
+        except Exception as e:
+            flash("Chyba spojení s databází!")
+            print(e)
     return render_template("login.html")
 
 @app.route("/register", methods=["GET", "POST"])
@@ -200,25 +216,27 @@ def register():
         username = request.form["username"].strip()
         email = request.form["email"].strip().lower()
         password = request.form["password"]
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
         try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
             cursor.execute("INSERT INTO uzivatele (username, email, password) VALUES (%s, %s, %s)", (username, email, password))
             conn.commit()
+            cursor.close()
+            conn.close()
             flash("Registrace úspěšná!")
             return redirect(url_for("login"))
         except psycopg2.IntegrityError:
             flash("Jméno nebo e-mail už existují!")
-        finally:
-            cursor.close()
-            conn.close()
+        except Exception as e:
+            flash("Chyba při zápisu do databáze!")
+            print(e)
     return render_template("register.html")
 
 @app.route("/forgot_password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT username, password FROM uzivatele WHERE email = %s", (email,))
         user_data = cursor.fetchone()
@@ -244,7 +262,7 @@ def logout():
 def update_bg():
     data_url = request.form.get("image_data")
     if data_url:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE uzivatele SET pozadi = %s WHERE id = %s", (data_url, current_user.id))
         conn.commit()
@@ -291,7 +309,7 @@ def add():
     mnozstvi = int(request.form["mnozstvi"])
     datum = request.form.get("datum")
     if datum == "": datum = None
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, mnozstvi FROM potraviny WHERE LOWER(nazev) = LOWER(%s)", (nazev,))
     existujici = cursor.fetchone()
@@ -309,7 +327,7 @@ def add():
 @app.route("/remove_one/<int:item_id>")
 @login_required
 def remove_one(item_id):
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT mnozstvi, nazev FROM potraviny WHERE id = %s", (item_id,))
     item = cursor.fetchone()
@@ -330,7 +348,7 @@ def remove_one(item_id):
 @app.route("/delete/<int:item_id>")
 @login_required
 def delete(item_id):
-    conn = psycopg2.connect(DATABASE_URL)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT nazev FROM potraviny WHERE id = %s", (item_id,))
     item = cursor.fetchone()
