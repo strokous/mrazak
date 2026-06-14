@@ -37,8 +37,8 @@ class User(UserMixin):
 
 # Pomocná funkce pro bezpečné připojení k Neonu s SSL certifikátem
 def get_db_connection():
-    # Na Renderu musíme vynutit použití systémových certifikátů pro SSL
-    return psycopg2.connect(DATABASE_URL, sslfactory="org.postgresql.ssl.NonValidatingFactory")
+    # Použijeme trik s předáním sslmode přímo do connect parametru bez factory
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 @login_manager.user_loader
 def load_user(user_id):
