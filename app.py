@@ -1,24 +1,26 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
-import sqlite3
+import psycopg2
+from psycopg2.extras import DictCursor
 from datetime import datetime, timedelta
 import smtplib
 import json
 import urllib.request
-import os
 from email.mime.text import MIMEText
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 
 app = Flask(__name__)
 app.secret_key = "nejake_super_tajne_heslo_pro_sessions"
-DATABASE = "database.db"
 
-# GMAIL CONFIGURATION
+# ====================================================================
+# TADY VLOŽ SVOJI ADRESU DATABÁZE Z NEON.TECH:
+# ====================================================================
+DATABASE_URL = "postgresql://neondb_owner:npg_1GjwOQiD9Lxz@ep-holy-sea-a2xwo123.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+# GMAIL A NTFY CONFIGURATION
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 EMAIL_ODESILATELE = "domacimrazak@gmail.com"
 HESLO_ODESILATELE = "jvps aotz fmob ifqb"
-
-# UNIKÁTNÍ NÁZEV KANÁLU PRO PUSH NOTIFIKACE (změň si ta čísla na cokoliv, aby to nikdo neuhodl)
 NTFY_CHANNEL = "mrazak_notifikace_rodina_987456"
 
 login_manager = LoginManager()
@@ -34,21 +36,23 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, pozadi FROM uzivatele WHERE id = ?", (user_id,))
+    cursor.execute("SELECT id, username, pozadi FROM uzivatele WHERE id = %s", (int(user_id),))
     user_data = cursor.fetchone()
+    cursor.close()
     conn.close()
     if user_data:
         return User(user_data[0], user_data[1], user_data[2])
     return None
 
 def init_db():
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
+    # PostgreSQL používá SERIAL místo AUTOINCREMENT a TEXT funguje skvěle
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS potraviny (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nazev TEXT NOT NULL,
             mnozstvi INTEGER NOT NULL,
             datum_nakupu TEXT,
@@ -58,7 +62,7 @@ def init_db():
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS uzivatele (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
@@ -66,9 +70,9 @@ def init_db():
         )
     """)
     conn.commit()
+    cursor.close()
     conn.close()
 
-# FUNKCE PRO ODPOVĚĎ DO MOBILU (PUSH NOTIFIKACE V LIŠTĚ)
 def odeslat_push_notifikaci(text_zpravy, titulky="Mrazák ❄️"):
     url = f"https://ntfy.sh/{NTFY_CHANNEL}"
     try:
@@ -76,7 +80,7 @@ def odeslat_push_notifikaci(text_zpravy, titulky="Mrazák ❄️"):
             url, 
             data=text_zpravy.encode('utf-8'),
             headers={
-                "Title": titulky.encode('utf-8').decode('latin1'), # ntfy vyžaduje specifické kódování pro diakritiku v hlavičce
+                "Title": titulky.encode('utf-8').decode('latin1'),
                 "Priority": "default",
                 "Tags": "warning,snowflake"
             },
@@ -85,9 +89,8 @@ def odeslat_push_notifikaci(text_zpravy, titulky="Mrazák ❄️"):
         with urllib.request.urlopen(req, timeout=5) as response:
             pass
     except Exception as e:
-        print("Chyba při odesílání Push notifikace:", e)
+        print("Chyba push notifikace:", e)
 
-# Původní email odesílání
 def odeslat_email(komu, predmet, text_zpravy):
     msg = MIMEText(text_zpravy, _charset="utf-8")
     msg["Subject"] = predmet
@@ -107,15 +110,16 @@ def odeslat_pripomenumi_email(komu, uzivatelske_jmeno, heslo):
     return odeslat_email(komu, "Připomenutí údajů - Mrazák", text)
 
 def get_vsechny_uzivatele():
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
     cursor.execute("SELECT id, username FROM uzivatele ORDER BY username ASC")
     data = cursor.fetchall()
+    cursor.close()
     conn.close()
     return data
 
 def get_potraviny(sort_by="datum", user_filter="vse"):
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
     query = """
         SELECT p.id, p.nazev, p.mnozstvi, p.datum_nakupu, p.v_mrazaku, u.username 
@@ -124,8 +128,9 @@ def get_potraviny(sort_by="datum", user_filter="vse"):
     """
     params = []
     if user_filter != "vse":
-        query += " WHERE p.uzivatel_id = ?"
+        query += " WHERE p.uzivatel_id = %s"
         params.append(int(user_filter))
+    
     if sort_by == "abeceda":
         query += " ORDER BY LOWER(p.nazev) ASC"
     else:
@@ -136,10 +141,10 @@ def get_potraviny(sort_by="datum", user_filter="vse"):
         """
     cursor.execute(query, params)
     data = cursor.fetchall()
+    cursor.close()
     conn.close()
     return data
 
-# --- SPECIÁLNÍ ROUTY PRO INSTALACI APLIKACE (PWA) ---
 @app.route("/manifest.json")
 def manifest():
     return send_from_directory("templates", "manifest.json")
@@ -169,17 +174,17 @@ def scan_barcode(barcode):
         print("Chyba čárového kódu:", e)
     return jsonify({"success": False, "nazev": "Kód nenalezen"})
 
-# --- ROUTY AUTENTIZACE ---
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
         remember_me = True if request.form.get("remember") == "on" else False
-        conn = sqlite3.connect(DATABASE)
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username, password, pozadi FROM uzivatele WHERE username = ?", (username,))
+        cursor.execute("SELECT id, username, password, pozadi FROM uzivatele WHERE username = %s", (username,))
         user_data = cursor.fetchone()
+        cursor.close()
         conn.close()
         if user_data and user_data[2] == password:
             user = User(user_data[0], user_data[1], user_data[3])
@@ -195,16 +200,17 @@ def register():
         username = request.form["username"].strip()
         email = request.form["email"].strip().lower()
         password = request.form["password"]
-        conn = sqlite3.connect(DATABASE)
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO uzivatele (username, email, password) VALUES (?, ?, ?)", (username, email, password))
+            cursor.execute("INSERT INTO uzivatele (username, email, password) VALUES (%s, %s, %s)", (username, email, password))
             conn.commit()
             flash("Registrace úspěšná!")
             return redirect(url_for("login"))
-        except sqlite3.IntegrityError:
+        except psycopg2.IntegrityError:
             flash("Jméno nebo e-mail už existují!")
         finally:
+            cursor.close()
             conn.close()
     return render_template("register.html")
 
@@ -212,10 +218,11 @@ def register():
 def forgot_password():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
-        conn = sqlite3.connect(DATABASE)
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        cursor.execute("SELECT username, password FROM uzivatele WHERE email = ?", (email,))
+        cursor.execute("SELECT username, password FROM uzivatele WHERE email = %s", (email,))
         user_data = cursor.fetchone()
+        cursor.close()
         conn.close()
         if user_data:
             username, puvodni_heslo = user_data
@@ -232,16 +239,16 @@ def logout():
     logout_user()
     return redirect(url_for("login"))
 
-# --- ROUTY MRAZÁKU ---
 @app.route("/update_bg", methods=["POST"])
 @login_required
 def update_bg():
     data_url = request.form.get("image_data")
     if data_url:
-        conn = sqlite3.connect(DATABASE)
+        conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        cursor.execute("UPDATE uzivatele SET pozadi = ? WHERE id = ?", (data_url, current_user.id))
+        cursor.execute("UPDATE uzivatele SET pozadi = %s WHERE id = %s", (data_url, current_user.id))
         conn.commit()
+        cursor.close()
         conn.close()
     odkud = request.args.get("from", "home")
     return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
@@ -284,16 +291,17 @@ def add():
     mnozstvi = int(request.form["mnozstvi"])
     datum = request.form.get("datum")
     if datum == "": datum = None
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    cursor.execute("SELECT id, mnozstvi FROM potraviny WHERE LOWER(nazev) = LOWER(?)", (nazev,))
+    cursor.execute("SELECT id, mnozstvi FROM potraviny WHERE LOWER(nazev) = LOWER(%s)", (nazev,))
     existujici = cursor.fetchone()
     if existujici:
-        cursor.execute("UPDATE potraviny SET mnozstvi = ? WHERE id = ?", (existujici[1] + mnozstvi, existujici[0]))
+        cursor.execute("UPDATE potraviny SET mnozstvi = %s WHERE id = %s", (existujici[1] + mnozstvi, existujici[0]))
     else:
-        cursor.execute("INSERT INTO potraviny (nazev, mnozstvi, datum_nakupu, v_mrazaku, uzivatel_id) VALUES (?, ?, ?, ?, ?)", 
+        cursor.execute("INSERT INTO potraviny (nazev, mnozstvi, datum_nakupu, v_mrazaku, uzivatel_id) VALUES (%s, %s, %s, %s, %s)", 
                        (nazev, mnozstvi, datum, 1, current_user.id))
     conn.commit()
+    cursor.close()
     conn.close()
     odkud = request.args.get("from", "home")
     return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
@@ -301,20 +309,20 @@ def add():
 @app.route("/remove_one/<int:item_id>")
 @login_required
 def remove_one(item_id):
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    cursor.execute("SELECT mnozstvi, nazev FROM potraviny WHERE id = ?", (item_id,))
+    cursor.execute("SELECT mnozstvi, nazev FROM potraviny WHERE id = %s", (item_id,))
     item = cursor.fetchone()
     if item:
         aktualni_mnozstvi, nazev_jidla = item
         if aktualni_mnozstvi > 1:
-            cursor.execute("UPDATE potraviny SET mnozstvi = mnozstvi - 1 WHERE id = ?", (item_id,))
+            cursor.execute("UPDATE potraviny SET mnozstvi = mnozstvi - 1 WHERE id = %s", (item_id,))
             conn.commit()
         else:
-            cursor.execute("DELETE FROM potraviny WHERE id = ?", (item_id,))
+            cursor.execute("DELETE FROM potraviny WHERE id = %s", (item_id,))
             conn.commit()
-            # JÍDLO DOŠLO -> POSÍLÁME PUSH NOTIFIKACI VŠEM DO LIŠTY TELEFONU
             odeslat_push_notifikaci(f"Uživatel {current_user.username} odebral poslední kus.", f"⚠️ Došlo jídlo: {nazev_jidla}")
+    cursor.close()
     conn.close()
     odkud = request.args.get("from", "home")
     return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
@@ -322,16 +330,16 @@ def remove_one(item_id):
 @app.route("/delete/<int:item_id>")
 @login_required
 def delete(item_id):
-    conn = sqlite3.connect(DATABASE)
+    conn = psycopg2.connect(DATABASE_URL)
     cursor = conn.cursor()
-    cursor.execute("SELECT nazev FROM potraviny WHERE id = ?", (item_id,))
+    cursor.execute("SELECT nazev FROM potraviny WHERE id = %s", (item_id,))
     item = cursor.fetchone()
     if item:
         nazev_jidla = item[0]
-        cursor.execute("DELETE FROM potraviny WHERE id = ?", (item_id,))
+        cursor.execute("DELETE FROM potraviny WHERE id = %s", (item_id,))
         conn.commit()
-        # NATVRDO SMAZÁNO -> POSÍLÁME PUSH NOTIFIKACI VŠEM DO LIŠTY
         odeslat_push_notifikaci(f"Uživatel {current_user.username} smazal celou položku.", f"⚠️ Došlo jídlo: {nazev_jidla}")
+    cursor.close()
     conn.close()
     odkud = request.args.get("from", "home")
     return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
