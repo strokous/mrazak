@@ -254,7 +254,7 @@ def home():
         
         # Pěkné formátování čísla (pokud je to celé číslo jako 5.0, ukážeme jen 5, pokud 1.5, necháme 1.5)
         mnozstvi = item[2]
-        if mnozstvi.is_integer():
+        if mnozstvi is not None and mnozstvi % 1 == 0:
             mnozstvi = int(mnozstvi)
             
         jednotka = item[6] if item[6] else "ks"
@@ -274,7 +274,7 @@ def search():
         vlozil_jmeno = item[5] if item[5] else "Neznámý"
         
         mnozstvi = item[2]
-        if mnozstvi.is_integer():
+        if mnozstvi is not None and mnozstvi % 1 == 0:
             mnozstvi = int(mnozstvi)
             
         jednotka = item[6] if item[6] else "ks"
