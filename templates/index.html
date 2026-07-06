@@ -1,314 +1,234 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link rel="manifest" href="/manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="#0b1220">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domácí Mrazák ❄️</title>
+    <style>
+        :root {
+            --bg-color: #121824;
+            --card-bg: #1e2533;
+            --input-bg: #2a3245;
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --accent-green: #10b981;
+            --accent-green-hover: #059669;
+            --accent-red: #ef4444;
+            --accent-red-hover: #dc2626;
+        }
 
-<script>
-    // Registrace běhu na pozadí (Service Worker)
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/sw.js');
-    }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
 
-    // Automatická žádost o povolení vyskakovacích notifikací z mrazáku
-    fetch('/get_ntfy_channel')
-        .then(res => res.json())
-        .then(data => {
-            // Použijeme webové rozhraní NTFY pro registraci odběru oznámení přímo v prohlížeči
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission().then(permission => {
-                    if (permission === 'granted') {
-                        console.log("Notifikace povoleny!");
-                    }
-                });
-            }
-        });
-</script>
-<title>Můj mrazák</title>
+        .container {
+            width: 100%;
+            max-width: 800px;
+        }
 
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
 
-<style>
-    :root {
-        --bg-color: #0b1220;
-        --card-bg: rgba(18, 26, 43, 0.85);
-        --card-border: rgba(255, 255, 255, 0.18);
-        --text-main: #ffffff;
-    }
+        h1 { margin: 0; font-size: 1.8rem; }
 
-    body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background-color: var(--bg-color);
-        {% if current_user.pozadi %}
-            background-image: url('{{ current_user.pozadi }}');
-        {% else %}
-            background-image: linear-gradient(135deg, #0b1220 0%, #1c2740 100%);
-        {% endif %}
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-        color: var(--text-main);
-        display: flex;
-        justify-content: center;
-        min-height: 100vh;
-    }
+        .btn {
+            background-color: var(--accent-green);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 0.9rem;
+            display: inline-block;
+        }
 
-    .phone-container {
-        width: 100%;
-        max-width: 450px;
-        min-height: 100vh;
-        background: rgba(0, 0, 0, 0.35);
-        backdrop-filter: blur(6px);
-        padding: 20px 16px 140px 16px;
-        box-sizing: border-box;
-    }
+        .btn:hover { background-color: var(--accent-green-hover); }
+        .btn-danger { background-color: var(--accent-red); }
+        .btn-danger:hover { background-color: var(--accent-red-hover); }
+        .btn-secondary { background-color: var(--input-bg); color: var(--text-color); }
+        .btn-secondary:hover { background-color: #374151; }
 
-    .user-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 15px;
-        margin-bottom: 16px;
-        background: rgba(0,0,0,0.2);
-        padding: 10px 14px;
-        border-radius: 12px;
-    }
-    .user-bar a { color: #f87171; text-decoration: none; font-weight: 600; padding: 6px 10px; }
+        .flash-messages {
+            background-color: #7f1d1d;
+            border: 1px solid var(--accent-red);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            color: #fca5a5;
+            list-style: none;
+        }
 
-    .filter-section {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        background: rgba(255, 255, 255, 0.07);
-        padding: 14px;
-        border-radius: 16px;
-        margin-bottom: 24px;
-        border: 1px solid rgba(255,255,255,0.15);
-    }
+        .card {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
 
-    .filter-row { display: flex; align-items: center; justify-content: space-between; }
-    .filter-label { font-size: 16px; font-weight: 600; opacity: 0.9; }
+        .form-group-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
 
-    .filter-select {
-        background: #1c2740; color: white; border: 1px solid rgba(255,255,255,0.2);
-        padding: 10px 14px; border-radius: 10px; font-size: 15px; font-weight: 600; outline: none;
-    }
+        input, select {
+            background-color: var(--input-bg);
+            border: 1px solid #374151;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 1rem;
+            flex: 1;
+            min-width: 120px;
+            box-sizing: border-box;
+        }
 
-    .item-card {
-        background: var(--card-bg); border: 2px solid var(--card-border); border-radius: 20px;
-        padding: 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-    }
+        input:focus, select:focus {
+            outline: 2px solid var(--accent-green);
+        }
 
-    .item-info { display: flex; flex-direction: column; gap: 6px; flex: 1; padding-right: 12px; }
-    .item-title-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-    .item-name { font-size: 21px; font-weight: 700; word-break: break-word; }
-    .item-count { font-size: 19px; color: #3b82f6; font-weight: 700; }
-    .item-details { display: flex; flex-direction: column; gap: 4px; font-size: 14px; opacity: 0.75; }
+        .select-unit {
+            flex: 0 0 80px;
+            min-width: 80px;
+            text-align: center;
+        }
 
-    .action-buttons { display: flex; gap: 10px; align-items: center; }
-    .btn-action { width: 52px; height: 52px; border: none; border-radius: 14px; color: white; font-size: 20px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .btn-minus { background: #374151; border: 1px solid rgba(255,255,255,0.1); }
-    .btn-delete { background: #ef4444; }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
 
-    .bottom-menu { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; z-index: 99; width: calc(100% - 32px); max-width: 418px; justify-content: center; }
-    .menu-btn { flex: 1; max-width: 140px; height: 64px; background: #1e293b; border: 2px solid var(--card-border); border-radius: 18px; color: white; font-size: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
-    .menu-btn-add { background: #3b82f6; border-color: #60a5fa; }
-    #bgInput { display: none; }
+        .controls form { display: flex; gap: 10px; align-items: center; }
 
-    /* MODAL */
-    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.8); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
-    .modal-overlay.active { opacity: 1; pointer-events: auto; }
-    .modal-card { background: #121a2b; border: 2px solid var(--card-border); border-radius: 24px; padding: 24px; width: 100%; max-width: 360px; max-height: 90vh; overflow-y: auto; }
-    .modal-card h3 { font-size: 22px; margin-top: 0; margin-bottom: 16px; text-align: center; }
-    
-    .form-group input { width: 100%; padding: 15px; margin-bottom: 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.15); background: #1c2740; color: white; font-size: 18px; box-sizing: border-box; outline: none; }
-    .form-group label { display: block; font-size: 15px; margin-bottom: 6px; opacity: 0.8; }
-    
-    .form-buttons { display: flex; gap: 12px; margin-top: 14px; }
-    .form-buttons button { flex: 1; padding: 16px; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
-    .btn-submit { background: #3b82f6; color: white; }
-    .btn-cancel { background: #374151; color: white; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
 
-    /* SPECIÁLNÍ TLAČÍTKO PRO SKENOVÁNÍ */
-    .btn-scanner {
-        width: 100%; padding: 14px; background: #0284c7; border: none; border-radius: 12px;
-        color: white; font-size: 16px; font-weight: 700; margin-bottom: 16px; cursor: pointer;
-        display: flex; align-items: center; justify-content: center; gap: 10px;
-    }
-    #reader { width: 100%; background: black; border-radius: 12px; margin-bottom: 14px; overflow: hidden; display: none; }
-</style>
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #2d3748;
+        }
+
+        th { color: var(--text-muted); font-weight: 600; }
+        .actions-cell { display: flex; gap: 6px; }
+        .actions-cell .btn { padding: 6px 12px; font-size: 0.85rem; }
+
+        @media (max-width: 600px) {
+            th:nth-child(4), td:nth-child(4) { display: none; } /* Schová uživatele na mobilu */
+            .form-group-row { flex-direction: column; }
+            .form-group-row input, .form-group-row select, .form-group-row button { width: 100%; flex: none; }
+        }
+    </style>
 </head>
 <body>
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul class="flash-messages">
+                    {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
 
-<div class="phone-container">
-
-    <div class="user-bar">
-        <span>Ahoj, <b>{{ current_user.username }}</b> 👋</span>
-        <a href="/logout">Odhlásit ✕</a>
-    </div>
-
-    <form id="filterForm" method="GET" action="/">
-        <div class="filter-section">
-            <div class="filter-row">
-                <span class="filter-label">Seřadit:</span>
-                <select name="sort" class="filter-select" onchange="document.getElementById('filterForm').submit()">
-                    <option value="datum" {% if sort_by == 'datum' %}selected{% endif %}>Podle data ▾</option>
-                    <option value="abeceda" {% if sort_by == 'abeceda' %}selected{% endif %}>Abecedy ▾</option>
-                </select>
+        <header>
+            <h1>Mrazák ❄️ <span style="font-size: 1rem; color: var(--text-muted)">Ahoj, {{ current_user.username }}</span></h1>
+            <div style="display: flex; gap: 8px;">
+                <a href="{{ url_for('search') }}" class="btn btn-secondary">🔍 Hledat</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-danger" style="padding: 10px;">Odhlásit</a>
             </div>
-            <div class="filter-row">
-                <span class="filter-label">Zobrazit od:</span>
-                <select name="user" class="filter-select" onchange="document.getElementById('filterForm').submit()">
-                    <option value="vse" {% if user_filter == 'vse' %}selected{% endif %}>Všech lidí ▾</option>
+        </header>
+
+        <div class="card">
+            <h3 style="margin-top: 0; margin-bottom: 15px;">Přidat potravinu</h3>
+            <form action="{{ url_for('add', sort=sort_by, user=user_filter) }}" method="POST" class="form-group-row">
+                <input type="text" name="nazev" placeholder="Název jídla (např. Kuřecí prsa)" required style="flex: 2;">
+                
+                <div style="display: flex; gap: 5px; flex: 1; min-width: 160px;">
+                    <input type="number" step="0.1" name="mnozstvi" placeholder="Množství" required style="width: 60%;">
+                    <select name="jednotka" class="select-unit">
+                        <option value="ks">ks</option>
+                        <option value="kg">kg</option>
+                        <option value="g">g</option>
+                    </select>
+                </div>
+
+                <input type="date" name="datum" placeholder="Datum nákupu">
+                <button type="submit" class="btn">Přidat</button>
+            </form>
+        </div>
+
+        <div class="controls">
+            <form method="GET" action="{{ url_for('home') }}">
+                <input type="hidden" name="user" value="{{ user_filter }}">
+                <label style="color: var(--text-muted); font-size: 0.9rem;">Řadit podle:</label>
+                <select name="sort" onchange="this.form.submit()">
+                    <option value="datum" {% if sort_by == 'datum' %}selected{% endif %}>Data nákupu</option>
+                    <option value="abeceda" {% if sort_by == 'abeceda' %}selected{% endif %}>Abecedy</option>
+                </select>
+            </form>
+
+            <form method="GET" action="{{ url_for('home') }}">
+                <input type="hidden" name="sort" value="{{ sort_by }}">
+                <label style="color: var(--text-muted); font-size: 0.9rem;">Kdo vložil:</label>
+                <select name="user" onchange="this.form.submit()">
+                    <option value="vse" {% if user_filter == 'vse' %}selected{% endif %}>Všichni</option>
                     {% for u in uzivatele %}
-                        <option value="{{ u[0] }}" {% if user_filter == u[0]|string %}selected{% endif %}>{{ u[1] }} ▾</option>
+                        <option value="{{ u[0] }}" {% if user_filter == (u[0]|string) %}selected{% endif %}>{{ u[1] }}</option>
                     {% endfor %}
                 </select>
-            </div>
+            </form>
         </div>
-    </form>
 
-    <div class="list-container">
-        {% for item in potraviny %}
-        <div class="item-card">
-            <div class="item-info">
-                <div class="item-title-row">
-                    <span class="item-name">{{ item[1] }}</span>
-                    <span class="item-count">{{ item[2] }}x</span>
-                </div>
-                <div class="item-details">
-                    {% if item[3] %} <span>📅 Koupil/a: {{ item[3] }}</span> {% endif %}
-                    <span>❄️ Vložil/a: <b>{{ item[5] }}</b></span>
-                </div>
-            </div>
-            <div class="action-buttons">
-                <a href="/remove_one/{{ item[0] }}?sort={{ sort_by }}&user={{ user_filter }}">
-                    <button class="btn-action btn-minus">━</button>
-                </a>
-                <a href="/delete/{{ item[0] }}?sort={{ sort_by }}&user={{ user_filter }}">
-                    <button class="btn-action btn-delete">✕</button>
-                </a>
-            </div>
+        <div class="card" style="padding: 10px; overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Název</th>
+                        <th>Množství</th>
+                        <th>Kdy koupeno</th>
+                        <th>Vložil</th>
+                        <th>Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in potraviny %}
+                    <tr>
+                        <td style="font-weight: bold;">{{ item[1] }}</td>
+                        <td style="color: var(--accent-green); font-weight: bold;">{{ item[2] }} {{ item[6] }}</td>
+                        <td style="color: var(--text-muted); font-size: 0.9rem;">{{ item[3] if item[3] else '—' }}</td>
+                        <td style="color: var(--text-muted); font-size: 0.9rem;">{{ item[5] }}</td>
+                        <td class="actions-cell">
+                            <a href="{{ url_for('remove_one', item_id=item[0], from='home', sort=sort_by, user=user_filter) }}" class="btn btn-secondary">— 1</a>
+                            <a href="{{ url_for('delete', item_id=item[0], from='home', sort=sort_by, user=user_filter) }}" class="btn btn-danger" onclick="return confirm('Opravdu smazat celé jídlo?')">Smazat</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">Mrazák je prázdný. Čas jít nakupovat! 🛒</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        {% endfor %}
     </div>
-
-    <div class="bottom-menu">
-        <label for="bgInput" class="menu-btn">🖼️</label>
-        <input type="file" id="bgInput" accept="image/*">
-        <button class="menu-btn menu-btn-add" id="openModalBtn">+</button>
-    </div>
-
-</div>
-
-<form id="bgForm" action="/update_bg?sort={{ sort_by }}&user={{ user_filter }}" method="POST" style="display: none;">
-    <input type="hidden" name="image_data" id="imageDataInput">
-</form>
-
-<div class="modal-overlay" id="modalOverlay">
-    <div class="modal-card">
-        <h3>Přidat do mrazáku</h3>
-        
-        <button type="button" class="btn-scanner" id="startScanBtn">Naskenovat kód 📷</button>
-        <div id="reader"></div>
-
-        <form action="/add?sort={{ sort_by }}&user={{ user_filter }}" method="POST">
-            <div class="form-group">
-                <input type="text" id="nazevInput" name="nazev" placeholder="Název jídla (např. Pizza)" required autocomplete="off">
-                <input type="number" name="mnozstvi" placeholder="Množství" min="1" value="1" required>
-                <label for="datumInput">Datum nákupu (nepovinné):</label>
-                <input type="date" id="datumInput" name="datum">
-            </div>
-            <div class="form-buttons">
-                <button type="submit" class="btn-submit">Uložit</button>
-                <button type="button" class="btn-cancel" id="closeModalBtn">Zavřít</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<script>
-    const modal = document.getElementById('modalOverlay');
-    const openBtn = document.getElementById('openModalBtn');
-    const closeBtn = document.getElementById('closeModalBtn');
-    const nazevInput = document.getElementById('nazevInput');
-    
-    // Proměnná pro čtečku kódu
-    let html5QrcodeScanner = null;
-
-    openBtn.addEventListener('click', () => modal.classList.add('active'));
-    
-    closeBtn.addEventListener('click', () => {
-        modal.classList.remove('active');
-        vypniKameru();
-    });
-
-    // JAVASCRIPT OVLÁDÁNÍ SKENERU CHYTRÉHO TELEFONU
-    document.getElementById('startScanBtn').addEventListener('click', function() {
-        const readerDiv = document.getElementById('reader');
-        readerDiv.style.display = 'block'; // Otevře okno s foťákem
-        
-        html5QrcodeScanner = new Html5Qrcode("reader");
-        
-        html5QrcodeScanner.start(
-            { facingMode: "environment" }, // Zapne zadní foťák mobilu
-            { fps: 10, qrbox: { width: 250, height: 150 } }, // Výřez pro čárové kódy
-            (decodedText, decodedResult) => {
-                // ÚSPĚŠNÉ PÍPNUTÍ KÓDU
-                vypniKameru();
-                nazevInput.placeholder = "Hledám na internetu...";
-                nazevInput.value = "";
-
-                // Pošleme kód našemu Pythonu, který se zeptá Open Food Facts databáze
-                fetch(`/scan_barcode/${decodedText}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            nazevInput.value = data.nazev; // Vyplní zjištěný název
-                        } else {
-                            nazevInput.placeholder = "Kód neznámý, napiš název ručně";
-                        }
-                    })
-                    .catch(err => {
-                        nazevInput.placeholder = "Chyba internetu, napiš ručně";
-                    });
-            },
-            (errorMessage) => { /* průběžné hledání kódu, ignorujeme chyby */ }
-        ).catch(err => {
-            alert("Nepodařilo se spustit foťák. Zkontroluj povolení nebo zda běžíš na HTTPS.");
-        });
-    });
-
-    function vypniKameru() {
-        if (html5QrcodeScanner) {
-            html5QrcodeScanner.stop().then(() => {
-                document.getElementById('reader').style.display = 'none';
-            }).catch(err => console.error("Chyba při vypínání kamery", err));
-        }
-    }
-
-    // Pozadí odesílání
-    const bgInput = document.getElementById('bgInput');
-    const bgForm = document.getElementById('bgForm');
-    const imageDataInput = document.getElementById('imageDataInput');
-
-    bgInput.addEventListener('change', function(e) {
-        const soubor = e.target.files[0];
-        if (soubor) {
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                imageDataInput.value = event.target.result;
-                bgForm.submit();
-            };
-            reader.readAsDataURL(soubor);
-        }
-    });
-</script>
-
 </body>
 </html>

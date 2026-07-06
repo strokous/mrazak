@@ -13,7 +13,7 @@ app = Flask(__name__)
 app.secret_key = "nejake_super_tajne_heslo_pro_sessions"
 
 # ====================================================================
-# TVŮJ UPRAVENÝ ODKAZ Z NEONU (NA KONCI PONECHÁNO JEN ?sslmode=require)
+# TVŮJ ODKAZ Z NEONU (NA KONCI PONECHÁNO JEN ?sslmode=require)
 # ====================================================================
 DATABASE_URL = "postgresql://neondb_owner:npg_1GjwOQiD9Lxz@ep-holy-sea-a2xwo123.eu-central-1.aws.neon.tech/neondb?sslmode=require"
 
@@ -35,9 +35,7 @@ class User(UserMixin):
         self.username = username
         self.pozadi = pozadi
 
-# Pomocná funkce pro bezpečné připojení k Neonu s SSL certifikátem
 def get_db_connection():
-    # Použijeme trik s předáním sslmode přímo do connect parametru bez factory
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 @login_manager.user_loader
@@ -59,11 +57,13 @@ def init_db():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        # Změnili jsme mnozstvi na FLOAT a přidali jednotka TEXT
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS potraviny (
                 id SERIAL PRIMARY KEY,
                 nazev TEXT NOT NULL,
-                mnozstvi INTEGER NOT NULL,
+                mnozstvi FLOAT NOT NULL,
+                jednotka TEXT DEFAULT 'ks',
                 datum_nakupu TEXT,
                 v_mrazaku INTEGER NOT NULL,
                 uzivatel_id INTEGER
@@ -78,10 +78,14 @@ def init_db():
                 pozadi TEXT
             )
         """)
+        # AUTOMATICKÁ MIGRACE: Pokud tabulka už existovala ze starší verze, doklepeme tam chybějící sloupec a typ
+        cursor.execute("ALTER TABLE potraviny ADD COLUMN IF NOT EXISTS jednotka TEXT DEFAULT 'ks';")
+        cursor.execute("ALTER TABLE potraviny ALTER COLUMN mnozstvi TYPE FLOAT;")
+        
         conn.commit()
         cursor.close()
         conn.close()
-        print("Databáze úspěšně inicializována na Neonu!")
+        print("Databáze úspěšně inicializována a zmigrována na Neonu!")
     except Exception as e:
         print("Chyba při inicializaci DB:", e)
 
@@ -117,10 +121,6 @@ def odeslat_email(komu, predmet, text_zpravy):
         print("Chyba e-mailu:", e)
         return False
 
-def odeslat_pripomenumi_email(komu, uzivatelske_jmeno, heslo):
-    text = f"Ahoj,\n\nUživatelské jméno: {uzivatelske_jmeno}\nHeslo: {heslo}"
-    return odeslat_email(komu, "Připomenutí údajů - Mrazák", text)
-
 def get_vsechny_uzivatele():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -133,8 +133,9 @@ def get_vsechny_uzivatele():
 def get_potraviny(sort_by="datum", user_filter="vse"):
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Taháme z DB i jednotku
     query = """
-        SELECT p.id, p.nazev, p.mnozstvi, p.datum_nakupu, p.v_mrazaku, u.username 
+        SELECT p.id, p.nazev, p.mnozstvi, p.datum_nakupu, p.v_mrazaku, u.username, p.jednotka 
         FROM potraviny p
         LEFT JOIN uzivatele u ON p.uzivatel_id = u.id
     """
@@ -169,22 +170,6 @@ def service_worker():
 @login_required
 def get_ntfy_channel():
     return jsonify({"channel": NTFY_CHANNEL})
-
-@app.route("/scan_barcode/<barcode>")
-@login_required
-def scan_barcode(barcode):
-    url = f"https://world.openfoodfacts.org/api/v2/product/{barcode}.json"
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'DomaciMrazakApp - Web - 1.0'})
-        with urllib.request.urlopen(req, timeout=4) as response:
-            data = json.loads(response.read().decode())
-        if data.get("status") == 1 and "product" in data:
-            product = data["product"]
-            nazev = product.get("product_name_cs") or product.get("product_name") or "Neznámá potravina"
-            return jsonify({"success": True, "nazev": nazev})
-    except Exception as e:
-        print("Chyba čárového kódu:", e)
-    return jsonify({"success": False, "nazev": "Kód nenalezen"})
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -232,25 +217,6 @@ def register():
             print(e)
     return render_template("register.html")
 
-@app.route("/forgot_password", methods=["GET", "POST"])
-def forgot_password():
-    if request.method == "POST":
-        email = request.form["email"].strip().lower()
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT username, password FROM uzivatele WHERE email = %s", (email,))
-        user_data = cursor.fetchone()
-        cursor.close()
-        conn.close()
-        if user_data:
-            username, puvodni_heslo = user_data
-            odeslat_pripomenumi_email(email, username, puvodni_heslo)
-            flash("Údaje odeslány na mail!")
-            return redirect(url_for("login"))
-        else:
-            flash("E-mail nenalezen!")
-    return render_template("forgot_password.html")
-
 @app.route("/logout")
 @login_required
 def logout():
@@ -285,7 +251,14 @@ def home():
             try: datum = datetime.strptime(datum, "%Y-%m-%d").strftime("%d.%m.%Y")
             except: pass
         vlozil_jmeno = item[5] if item[5] else "Neznámý"
-        upravene.append((item[0], item[1], item[2], datum, item[4], vlozil_jmeno))
+        
+        # Pěkné formátování čísla (pokud je to celé číslo jako 5.0, ukážeme jen 5, pokud 1.5, necháme 1.5)
+        mnozstvi = item[2]
+        if mnozstvi.is_integer():
+            mnozstvi = int(mnozstvi)
+            
+        jednotka = item[6] if item[6] else "ks"
+        upravene.append((item[0], item[1], mnozstvi, datum, item[4], vlozil_jmeno, jednotka))
     return render_template("index.html", potraviny=upravene, sort_by=sort_by, user_filter=user_filter, uzivatele=vsechni_uzivatele)
 
 @app.route("/search")
@@ -299,25 +272,35 @@ def search():
             try: datum = datetime.strptime(datum, "%Y-%m-%d").strftime("%d.%m.%Y")
             except: pass
         vlozil_jmeno = item[5] if item[5] else "Neznámý"
-        upravene.append((item[0], item[1], item[2], datum, item[4], vlozil_jmeno))
+        
+        mnozstvi = item[2]
+        if mnozstvi.is_integer():
+            mnozstvi = int(mnozstvi)
+            
+        jednotka = item[6] if item[6] else "ks"
+        upravene.append((item[0], item[1], mnozstvi, datum, item[4], vlozil_jmeno, jednotka))
     return render_template("search.html", potraviny=upravene)
 
 @app.route("/add", methods=["POST"])
 @login_required
 def add():
     nazev = request.form["nazev"].strip()
-    mnozstvi = int(request.form["mnozstvi"])
+    mnozstvi = float(request.form["mnozstvi"])
+    jednotka = request.form.get("jednotka", "ks")
     datum = request.form.get("datum")
     if datum == "": datum = None
+    
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, mnozstvi FROM potraviny WHERE LOWER(nazev) = LOWER(%s)", (nazev,))
+    # Sčítáme jídlo jen tehdy, pokud sedí název I JEDNOTKA (nesčítáme 1kg kuřete a 1ks kuřete)
+    cursor.execute("SELECT id, mnozstvi FROM potraviny WHERE LOWER(nazev) = LOWER(%s) AND jednotka = %s", (nazev, jednotka))
     existujici = cursor.fetchone()
+    
     if existujici:
         cursor.execute("UPDATE potraviny SET mnozstvi = %s WHERE id = %s", (existujici[1] + mnozstvi, existujici[0]))
     else:
-        cursor.execute("INSERT INTO potraviny (nazev, mnozstvi, datum_nakupu, v_mrazaku, uzivatel_id) VALUES (%s, %s, %s, %s, %s)", 
-                       (nazev, mnozstvi, datum, 1, current_user.id))
+        cursor.execute("INSERT INTO potraviny (nazev, mnozstvi, jednotka, datum_nakupu, v_mrazaku, uzivatel_id) VALUES (%s, %s, %s, %s, %s, %s)", 
+                       (nazev, mnozstvi, jednotka, datum, 1, current_user.id))
     conn.commit()
     cursor.close()
     conn.close()
@@ -329,10 +312,12 @@ def add():
 def remove_one(item_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT mnozstvi, nazev FROM potraviny WHERE id = %s", (item_id,))
+    cursor.execute("SELECT mnozstvi, nazev, jednotka FROM potraviny WHERE id = %s", (item_id,))
     item = cursor.fetchone()
     if item:
-        aktualni_mnozstvi, nazev_jidla = item
+        aktualni_mnozstvi, nazev_jidla, jednotka = item
+        
+        # Pravidlo pro ubírání: Pokud zbývá víc než 1, ubereme přesně 1 jednotku. Pokud zbývá 1 nebo méně (např 0.5 kg), smažeme položku.
         if aktualni_mnozstvi > 1:
             cursor.execute("UPDATE potraviny SET mnozstvi = mnozstvi - 1 WHERE id = %s", (item_id,))
             conn.commit()
