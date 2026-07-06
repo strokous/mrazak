@@ -347,6 +347,8 @@ def delete(item_id):
     odkud = request.args.get("from", "home")
     return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
 
+# Takhle to vytáhni VEN z té podmínky, aby to Gunicorn spustil při každém startu:
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     app.run(host="0.0.0.0", port=5000, debug=True)
