@@ -3,18 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Domácí Mrazák ❄️</title>
+    <title>Mrazák ❄️</title>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#121824">
+    
     <style>
         :root {
             --bg-color: #121824;
             --card-bg: #1e2533;
-            --input-bg: #2a3245;
-            --text-color: #f3f4f6;
-            --text-muted: #9ca3af;
+            --text-color: #f8fafc;
+            --text-muted: #94a3b8;
             --accent-green: #10b981;
             --accent-green-hover: #059669;
             --accent-red: #ef4444;
             --accent-red-hover: #dc2626;
+            --border-color: #334155;
+            --input-bg: #0f172a;
         }
 
         body {
@@ -29,207 +33,273 @@
 
         .container {
             width: 100%;
-            max-width: 800px;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
 
-        header {
+        .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
         }
 
-        h1 { margin: 0; font-size: 1.8rem; }
+        .header h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+        }
 
         .btn {
-            background-color: var(--accent-green);
-            color: white;
-            border: none;
-            padding: 10px 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
             font-weight: bold;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
             font-size: 0.9rem;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
         }
 
-        .btn:hover { background-color: var(--accent-green-hover); }
-        .btn-danger { background-color: var(--accent-red); }
-        .btn-danger:hover { background-color: var(--accent-red-hover); }
-        .btn-secondary { background-color: var(--input-bg); color: var(--text-color); }
-        .btn-secondary:hover { background-color: #374151; }
+        .btn-primary {
+            background-color: var(--accent-green);
+            color: white;
+        }
 
-        .flash-messages {
-            background-color: #7f1d1d;
-            border: 1px solid var(--accent-red);
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            color: #fca5a5;
-            list-style: none;
+        .btn-primary:hover {
+            background-color: var(--accent-green-hover);
+        }
+
+        .btn-secondary {
+            background-color: #334155;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #475569;
+        }
+
+        .btn-danger {
+            background-color: var(--accent-red);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background-color: var(--accent-red-hover);
         }
 
         .card {
             background-color: var(--card-bg);
             padding: 20px;
             border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            color: var(--text-color);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
         }
 
         .form-group-row {
             display: flex;
             gap: 10px;
-            flex-wrap: wrap;
+        }
+
+        .form-group-row .form-group {
+            flex: 1;
         }
 
         input, select {
             background-color: var(--input-bg);
-            border: 1px solid #374151;
-            color: white;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 1rem;
-            flex: 1;
-            min-width: 120px;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            outline: none;
+            width: 100%;
             box-sizing: border-box;
         }
 
         input:focus, select:focus {
-            outline: 2px solid var(--accent-green);
+            border-color: var(--accent-green);
         }
 
-        .select-unit {
-            flex: 0 0 80px;
-            min-width: 80px;
-            text-align: center;
+        .table-container {
+            overflow-x: auto;
         }
-
-        .controls {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-        }
-
-        .controls form { display: flex; gap: 10px; align-items: center; }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 10px;
+            text-align: left;
         }
 
         th, td {
             padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #2d3748;
+            border-bottom: 1px solid var(--border-color);
         }
 
-        th { color: var(--text-muted); font-weight: 600; }
-        .actions-cell { display: flex; gap: 6px; }
-        .actions-cell .btn { padding: 6px 12px; font-size: 0.85rem; }
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
 
+        .actions-cell {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Responzivní design pro telefony */
         @media (max-width: 600px) {
-            th:nth-child(4), td:nth-child(4) { display: none; } /* Schová uživatele na mobilu */
-            .form-group-row { flex-direction: column; }
-            .form-group-row input, .form-group-row select, .form-group-row button { width: 100%; flex: none; }
+            .hide-mobile { display: none; }
+            .form-group-row { flex-direction: column; gap: 0; }
+            .form-group-row .form-group { margin-bottom: 15px; }
+            .actions-cell { display: flex; gap: 6px; }
+            .actions-cell .btn { padding: 8px 12px; font-size: 1rem; }
+            body { padding: 10px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                <ul class="flash-messages">
-                    {% for message in messages %}<li>{{ message }}</li>{% endfor %}
-                </ul>
-            {% endif %}
-        {% endwith %}
-
-        <header>
-            <h1>Mrazák ❄️ <span style="font-size: 1rem; color: var(--text-muted)">Ahoj, {{ current_user.username }}</span></h1>
-            <div style="display: flex; gap: 8px;">
+        <div class="header">
+            <h1>Mrazák ❄️</h1>
+            <div class="header-buttons">
                 <a href="{{ url_for('search') }}" class="btn btn-secondary">🔍 Hledat</a>
-                <a href="{{ url_for('logout') }}" class="btn btn-danger" style="padding: 10px;">Odhlásit</a>
+                <a href="{{ url_for('logout') }}" class="btn btn-danger">Odhlásit</a>
             </div>
-        </header>
+        </div>
+        
+        <p style="margin: 0; color: var(--text-muted);">Ahoj, {{ current_user.username }}</p>
 
         <div class="card">
-            <h3 style="margin-top: 0; margin-bottom: 15px;">Přidat potravinu</h3>
-            <form action="{{ url_for('add', sort=sort_by, user=user_filter) }}" method="POST" class="form-group-row">
-                <input type="text" name="nazev" placeholder="Název jídla (např. Kuřecí prsa)" required style="flex: 2;">
-                
-                <div style="display: flex; gap: 5px; flex: 1; min-width: 160px;">
-                    <input type="number" step="0.1" name="mnozstvi" placeholder="Množství" required style="width: 60%;">
-                    <select name="jednotka" class="select-unit">
-                        <option value="ks">ks</option>
-                        <option value="kg">kg</option>
-                        <option value="g">g</option>
-                        <option value="x">x</option>
-                    </select>
+            <h2>Přidat potravinu</h2>
+            <form method="POST" action="">
+                <div class="form-group">
+                    <input type="text" name="nazev" placeholder="Název jídla (např. Kuřecí prsa)" required autocomplete="off">
                 </div>
-
-                <input type="date" name="datum" placeholder="Datum nákupu">
-                <button type="submit" class="btn">Přidat</button>
+                <div class="form-group-row">
+                    <div class="form-group" style="flex: 2;">
+                        <input type="number" step="any" name="mnozstvi" placeholder="Množství" required>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <select name="jednotka">
+                            <option value="ks">ks</option>
+                            <option value="kg">kg</option>
+                            <option value="g">g</option>
+                            <option value="porce">porce</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <input type="date" name="datum_nakupu">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px;">Přidat</button>
             </form>
         </div>
 
-        <div class="controls">
-            <form method="GET" action="{{ url_for('home') }}">
-                <input type="hidden" name="user" value="{{ user_filter }}">
-                <label style="color: var(--text-muted); font-size: 0.9rem;">Řadit podle:</label>
+        <form method="GET" action="" class="form-group-row" style="margin-bottom: 5px;">
+            <div class="form-group" style="flex: 1;">
+                <label style="font-size: 0.85rem; color: var(--text-muted);">Řadit podle:</label>
                 <select name="sort" onchange="this.form.submit()">
                     <option value="datum" {% if sort_by == 'datum' %}selected{% endif %}>Data nákupu</option>
-                    <option value="abeceda" {% if sort_by == 'abeceda' %}selected{% endif %}>Abecedy</option>
+                    <option value="nazev" {% if sort_by == 'nazev' %}selected{% endif %}>Názvu</option>
+                    <option value="mnozstvi" {% if sort_by == 'mnozstvi' %}selected{% endif %}>Množství</option>
                 </select>
-            </form>
-
-            <form method="GET" action="{{ url_for('home') }}">
-                <input type="hidden" name="sort" value="{{ sort_by }}">
-                <label style="color: var(--text-muted); font-size: 0.9rem;">Kdo vložil:</label>
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label style="font-size: 0.85rem; color: var(--text-muted);">Kdo vložil:</label>
                 <select name="user" onchange="this.form.submit()">
                     <option value="vse" {% if user_filter == 'vse' %}selected{% endif %}>Všichni</option>
-                    {% for u in uzivatele %}
-                        <option value="{{ u[0] }}" {% if user_filter == (u[0]|string) %}selected{% endif %}>{{ u[1] }}</option>
-                    {% endfor %}
+                    <option value="moje" {% if user_filter == 'moje' %}selected{% endif %}>Jen moje</option>
                 </select>
-            </form>
-        </div>
+            </div>
+        </form>
 
-        <div class="card" style="padding: 10px; overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Název</th>
-                        <th>Množství</th>
-                        <th>Kdy koupeno</th>
-                        <th>Vložil</th>
-                        <th>Akce</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in potraviny %}
-                    <tr>
-                        <td style="font-weight: bold;">{{ item[1] }}</td>
-                        <td style="color: var(--accent-green); font-weight: bold;">{{ item[2] }} {{ item[6] }}</td>
-                        <td style="color: var(--text-muted); font-size: 0.9rem;">{{ item[3] if item[3] else '—' }}</td>
-                        <td style="color: var(--text-muted); font-size: 0.9rem;">{{ item[5] }}</td>
-                        <td class="actions-cell">
-                            <a href="{{ url_for('remove_one', item_id=item[0], from='home', sort=sort_by, user=user_filter) }}" class="btn btn-secondary">— 1</a>
-                            <a href="{{ url_for('delete', item_id=item[0], from='home', sort=sort_by, user=user_filter) }}" class="btn btn-danger" onclick="return confirm('Opravdu smazat celé jídlo?')">Smazat</a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">Mrazák je prázdný. Čas jít nakupovat! 🛒</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <div class="card" style="padding: 10px 15px;">
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Název</th>
+                            <th>Množství</th>
+                            <th class="hide-mobile">Koupeno</th>
+                            <th class="hide-mobile">Vložil</th>
+                            <th>Akce</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in potraviny %}
+                        <tr>
+                            <td style="font-weight: bold;">{{ item[1] }}</td>
+                            <td style="color: var(--accent-green); font-weight: bold; white-space: nowrap;">{{ item[2] }} {{ item[6] }}</td>
+                            <td class="hide-mobile" style="color: var(--text-muted); font-size: 0.9rem;">{{ item[3] if item[3] else '—' }}</td>
+                            <td class="hide-mobile" style="color: var(--text-muted); font-size: 0.9rem;">{{ item[5] }}</td>
+                            <td class="actions-cell">
+                                <button onclick="zadatOdber({{ item[0] }}, {{ item[2] }}, '{{ item[6] }}', 'home')" class="btn btn-secondary" style="padding: 6px 12px;">—</button>
+                                <a href="{{ url_for('delete', item_id=item[0], from='home', sort=sort_by, user=user_filter) }}" class="btn btn-danger" onclick="return confirm('Opravdu chceš smazat celou položku?')" style="padding: 6px 10px; text-decoration: none;">🗑️</a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">Mrazák je prázdný. Čas jít nakupovat! 🛒</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
+    <script>
+        // Registrace Service Workeru pro správné fungování PWA aplikace offline
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('Service Worker úspěšně registrován', reg))
+                .catch(err => console.error('Registrace Service Workeru selhala', err));
+        }
+
+        // Funkce pro vyskakovací okno při kliknutí na mínus
+        function zadatOdber(itemId, aktualniMnozstvi, jednotka, fromPage) {
+            let odpoved = prompt(`Kolik ${jednotka} chceš odebrat?\n(K dispozici je: ${aktualniMnozstvi} ${jednotka})`, "1");
+            
+            if (odpoved !== null && odpoved.trim() !== "") {
+                // Převod desetinné čárky na tečku, kdyby to někdo napsal česky
+                let mnozstvi = odpoved.replace(',', '.');
+                
+                if (!isNaN(mnozstvi) && Number(mnozstvi) > 0) {
+                    let urlParams = new URLSearchParams(window.location.search);
+                    let sort = urlParams.get('sort') || 'datum';
+                    let user = urlParams.get('user') || 'vse';
+                    
+                    window.location.href = `/remove_amount/${itemId}?amount=${mnozstvi}&from=${fromPage}&sort=${sort}&user=${user}`;
+                } else {
+                    alert("Musíš zadat platné číslo větší než nula!");
+                }
+            }
+        }
+    </script>
 </body>
 </html>

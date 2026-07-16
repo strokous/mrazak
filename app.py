@@ -307,24 +307,35 @@ def add():
     odkud = request.args.get("from", "home")
     return redirect(url_for(odkud, sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
 
-@app.route("/remove_one/<int:item_id>")
+@app.route("/remove_amount/<int:item_id>")
 @login_required
-def remove_one(item_id):
+def remove_amount(item_id):
+    amount_str = request.args.get("amount", "1")
+    
+    try:
+        # Zvládne i desetinná čísla
+        odebrat_mnozstvi = float(amount_str)
+    except ValueError:
+        return redirect(url_for(request.args.get("from", "home"), sort=request.args.get("sort", "datum"), user=request.args.get("user", "vse")))
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT mnozstvi, nazev, jednotka FROM potraviny WHERE id = %s", (item_id,))
     item = cursor.fetchone()
+    
     if item:
         aktualni_mnozstvi, nazev_jidla, jednotka = item
+        nove_mnozstvi = aktualni_mnozstvi - odebrat_mnozstvi
         
-        # Pravidlo pro ubírání: Pokud zbývá víc než 1, ubereme přesně 1 jednotku. Pokud zbývá 1 nebo méně (např 0.5 kg), smažeme položku.
-        if aktualni_mnozstvi > 1:
-            cursor.execute("UPDATE potraviny SET mnozstvi = mnozstvi - 1 WHERE id = %s", (item_id,))
+        # Pokud po odečtení stále něco zbývá, jen upravíme číslo. Pokud to klesne na 0 nebo do mínusu, položku smažeme.
+        if nove_mnozstvi > 0:
+            cursor.execute("UPDATE potraviny SET mnozstvi = %s WHERE id = %s", (nove_mnozstvi, item_id))
             conn.commit()
         else:
             cursor.execute("DELETE FROM potraviny WHERE id = %s", (item_id,))
             conn.commit()
-            odeslat_push_notifikaci(f"Uživatel {current_user.username} odebral poslední kus.", f"⚠️ Došlo jídlo: {nazev_jidla}")
+            odeslat_push_notifikaci(f"Uživatel {current_user.username} vybral zbytek.", f"⚠️ Došlo jídlo: {nazev_jidla}")
+            
     cursor.close()
     conn.close()
     odkud = request.args.get("from", "home")

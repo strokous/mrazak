@@ -100,10 +100,15 @@
             text-decoration: none;
             font-size: 0.85rem;
         }
+        
         .btn-minus:hover { background-color: #374151; }
 
         @media (max-width: 600px) {
             th:nth-child(4), td:nth-child(4) { display: none; }
+        }
+
+        @media (max-width: 600px) {
+            .hide-mobile { display: none; }
         }
     </style>
 </head>
@@ -127,28 +132,29 @@
                         <th>Akce</th>
                     </tr>
                 </thead>
-                <tbody id="foodTable">
-                    {% for item in potraviny %}
-                    <tr class="food-row">
-                        <td class="food-name" style="font-weight: bold;">{{ item[1] }}</td>
-                        <td style="color: var(--accent-green); font-weight: bold;">{{ item[2] }} {{ item[6] }}</td>
-                        <td style="color: var(--text-muted); font-size: 0.9rem;">{{ item[3] if item[3] else '—' }}</td>
-                        <td style="color: var(--text-muted); font-size: 0.9rem;">{{ item[5] }}</td>
-                        <td>
-                            <a href="{{ url_for('remove_one', item_id=item[0], from='search') }}" class="btn-minus">— 1</a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">V mrazáku nic není.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                    <tbody id="foodTable">
+                        {% for item in potraviny %}
+                        <tr class="food-row">
+                            <td class="food-name" style="font-weight: bold;">{{ item[1] }}</td>
+                            <td style="color: var(--accent-green); font-weight: bold; white-space: nowrap;">{{ item[2] }} {{ item[6] }}</td>
+                            <td class="hide-mobile" style="color: var(--text-muted); font-size: 0.9rem;">{{ item[3] if item[3] else '—' }}</td>
+                            <td class="hide-mobile" style="color: var(--text-muted); font-size: 0.9rem;">{{ item[5] }}</td>
+                            <td class="actions-cell" style="display: flex; gap: 5px;">
+                                <button onclick="zadatOdber({{ item[0] }}, {{ item[2] }}, '{{ item[6] }}', 'search')" class="btn-minus">—</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">V mrazáku nic není.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
             </table>
         </div>
     </div>
 
     <script>
+        // Původní skript na hledání
         document.getElementById('searchInput').addEventListener('input', function() {
             const filterValue = this.value.toLowerCase().trim();
             const rows = document.querySelectorAll('.food-row');
@@ -162,6 +168,20 @@
                 }
             });
         });
+
+        // NOVÝ SKRIPT NA ODEBÍRÁNÍ
+        function zadatOdber(itemId, aktualniMnozstvi, jednotka, fromPage) {
+            let odpoved = prompt(`Kolik ${jednotka} chceš odebrat?\n(K dispozici je: ${aktualniMnozstvi} ${jednotka})`, "1");
+            
+            if (odpoved !== null && odpoved.trim() !== "") {
+                let mnozstvi = odpoved.replace(',', '.');
+                if (!isNaN(mnozstvi) && Number(mnozstvi) > 0) {
+                    window.location.href = `/remove_amount/${itemId}?amount=${mnozstvi}&from=${fromPage}`;
+                } else {
+                    alert("Musíš zadat platné číslo!");
+                }
+            }
+        }
     </script>
 </body>
 </html>
