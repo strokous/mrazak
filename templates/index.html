@@ -196,7 +196,7 @@
 
         <div class="card">
             <h2>Přidat potravinu</h2>
-            <form method="POST" action="">
+            <form method="POST" action="{{ url_for('add', sort=sort_by, user=user_filter) }}">
                 <div class="form-group">
                     <input type="text" name="nazev" placeholder="Název jídla (např. Kuřecí prsa)" required autocomplete="off">
                 </div>
